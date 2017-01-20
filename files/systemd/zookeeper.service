@@ -1,0 +1,36 @@
+#
+# Systemd script to manage a Zookeeper node.
+#
+# Copyright 2016-2017, Frederico Martins
+#   Author: Frederico Martins <http://github.com/fscm>
+#
+# SPDX-License-Identifier: MIT
+#
+
+[Unit]
+Description=Zookeeper
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User=zookeeper
+Group=zookeeper
+PIDFile=/var/run/zookeeper/zookeeper.pid
+WorkingDirectory=/srv/zookeeper
+PermissionsStartOnly=true
+ExecStartPre=-/usr/bin/install -o zookeeper -g zookeeper -d /var/run/zookeeper
+ExecStart=/srv/zookeeper/bin/zkServer.sh start zoo.cfg
+SyslogIdentifier=zookeeper
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=infinity
+LimitMEMLOCK=infinity
+LimitNPROC=infinity
+LimitAS=infinity
+SuccessExitStatus=143
+Restart=always
+RestartSec=20
+
+[Install]
+WantedBy=multi-user.target

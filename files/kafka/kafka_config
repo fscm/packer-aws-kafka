@@ -1,0 +1,176 @@
+#!/bin/bash
+#
+# Shell script to configure some options of Kafka.
+#
+# Copyright 2016-2017, Frederico Martins
+#   Author: Frederico Martins <http://github.com/fscm>
+#
+# SPDX-License-Identifier: MIT
+#
+# This progam is free software. You can use it and/or modify it under the
+# terms of the MIT License.
+#
+
+set -e
+
+BASEDIR=$(dirname $0)
+BASENAME=$(basename $0)
+__TS__=$(date +%Y%m%d%H%M%S)
+
+# Configuration files
+KAFKA_CONF="/srv/kafka/config/server.properties"
+KAFKA_CONSUMER_CONF="/srv/kafka/config/consumer.properties"
+KAFKA_ENV="/srv/kafka/bin/kafka-env.sh"
+
+# Variables
+KAFKA_DISABLE=0
+KAFKA_ENABLE=0
+KAFKA_START=0
+KAFKA_WAIT=0
+
+KAFKA_ADDRESS=
+KAFKA_HEAP_MAXSIZE=
+KAFKA_ID=
+
+__TMP_ZOOKEEPER_NODES__=()
+
+# Usage
+function show_usage() {
+  echo "Usage: ${BASENAME} [options]"
+  echo "  options:"
+  echo "    -a <ADDRESS>   Sets the Kafka broker advertised address (default value is"
+  echo "                   'localhost')."
+  echo "    -D             Disables the Kafka service from start at boot time."
+  echo "    -E             Enables the Kafka service to start at boot time."
+  echo "    -i <ID>        Sets the Kafka broker ID (default value is '0')."
+  echo "    -m <MEMORY>    Sets Kafka maximum heap size. Values should be provided"
+  echo "                   following the same Java heap nomenclature."
+  echo "    -S             Starts the Kafka service after performing the required"
+  echo "                   configurations (if any given)."
+  echo "    -W <SECONDS>   Waits the specified amount of seconds before starting the"
+  echo "                   Kafka service (default value is '0')."
+  echo "    -z <ENDPOINT>  Sets a Zookeeper server endpoint to be used by the Kafka"
+  echo "                   broker (default value is 'localhost:2181')."
+}
+
+# Options parsing
+while getopts ":a:DEi:m:SW:z:" opt; do
+  case $opt in
+    a)
+      KAFKA_ADDRESS=${OPTARG}
+      ;;
+    D)
+      KAFKA_DISABLE=1
+      ;;
+    E)
+      KAFKA_ENABLE=1
+      ;;
+    i)
+      KAFKA_ID=${OPTARG}
+      ;;
+    m)
+      KAFKA_HEAP_MAXSIZE=${OPTARG}
+      ;;
+    S)
+      KAFKA_START=1
+      ;;
+    W)
+      KAFKA_WAIT=${OPTARG}
+      ;;
+    z)
+      __TMP_ZOOKEEPER_NODES__+=("${OPTARG}")
+      ;;
+    \?)
+      echo >&2 "  [ERROR] Invalid option: -${OPTARG}"
+      exit 1
+      ;;
+    :)
+      echo >&2 "  [ERROR] Option -${OPTARG} requires an argument"
+      exit 2
+      ;;
+  esac
+done
+
+# Check arguments
+if [[ $# -eq 0 ]]; then
+  show_usage
+  exit 3
+fi
+
+# Check permissions
+if [[ $EUID -ne 0 ]]; then
+  echo >&2 "  [ERROR] This script requires privileged access to system files"
+  exit 4
+fi
+
+# Check requirements
+if [[ "${KAFKA_ENABLE}" -gt 0 ]] && [[ "${KAFKA_DISABLE}" -gt 0 ]]; then
+  echo >&2 "  [ERROR] Enable (-E) and Disable (-D) options can not be used together."
+  exit 5
+fi
+
+# Backup configuration files
+if [[ -f ${KAFKA_CONF} ]]; then
+  cp ${KAFKA_CONF} ${KAFKA_CONF}.${__TS__}.bck
+fi
+if [[ -f ${KAFKA_CONSUMER_CONF} ]]; then
+  cp ${KAFKA_CONSUMER_CONF} ${KAFKA_CONSUMER_CONF}.${__TS__}.bck
+fi
+if [[ -f ${KAFKA_ENV} ]]; then
+  cp ${KAFKA_ENV} ${KAFKA_ENV}.${__TS__}.bck
+fi
+
+# Configure broker advertised address
+if ! [[ "x${KAFKA_ADDRESS}" = "x" ]]; then
+  sed -i -r -e "s/# *advertised.listeners/advertised.listeners/;/^advertised.listeners/s|=.*|=PLAINTEXT://${KAFKA_ADDRESS}:9092|" ${KAFKA_CONF}
+fi
+
+# Configure broker id
+if ! [[ "x${KAFKA_ID}" = "x" ]]; then
+  sed -i -r -e "s/# *broker.id/broker.id/;/^broker.id/s/=.*/=${KAFKA_ID}/" ${KAFKA_CONF}
+fi
+
+# Configure memory settings
+if ! [[ "x${KAFKA_HEAP_MAXSIZE}" = "x" ]]; then
+  sed -i -r -e '/-Xmx/d' ${KAFKA_ENV}
+  echo "export KAFKA_HEAP_OPTS=\"-Xmx${KAFKA_HEAP_MAXSIZE} -Xms${KAFKA_HEAP_MAXSIZE}\"" >> ${KAFKA_ENV}
+fi
+
+# Configure zookeeper nodes
+if [[ "${#__TMP_ZOOKEEPER_NODES__[@]}" -gt 0 ]]; then
+  ZOOKEEPER_NODES=()
+  for node in ${__TMP_ZOOKEEPER_NODES__[@]//,/ }; do
+    if [[ "${node}" =~ ^([0-9a-zA-Z\.\-]+)(:([0-9]+))?$ ]]; then
+      ZOOKEEPER_PORT=("${BASH_REMATCH[3]}")
+      ZOOKEEPER_NODES+=("${BASH_REMATCH[1]}:${ZOOKEEPER_PORT:-2181}")
+    else
+      echo "  [WARN] Invalid node address (${node})."
+    fi
+  done
+  if [[ "${#ZOOKEEPER_NODES[@]}" -gt 0 ]]; then
+    NODES="${ZOOKEEPER_NODES[@]}"
+    sed -i -r -e "s/# *zookeeper.connect=/zookeeper.connect=/;/^zookeeper.connect=/s/=.*/=${NODES// /,}/" ${KAFKA_CONF}
+    sed -i -r -e "s/# *zookeeper.connect=/zookeeper.connect=/;/^zookeeper.connect=/s/=.*/=${NODES// /,}/" ${KAFKA_CONSUMER_CONF}
+  fi
+fi
+
+# Enable the service
+[[ "${KAFKA_ENABLE}" -gt 0 ]] && systemctl enable kafka.service
+
+# Disable the service
+[[ "${KAFKA_DISABLE}" -gt 0 ]] && systemctl disable kafka.service
+
+# Start the service
+if [[ "${KAFKA_START}" -gt 0 ]]; then
+  echo "  [INFO] Kafka will start in ${KAFKA_WAIT} second(s)..."
+  nohup sh -c "sleep ${KAFKA_WAIT} ; systemctl start kafka.service" &> /dev/null &
+fi
+
+# Clean up unneeded backups
+diff -q ${KAFKA_CONF} ${KAFKA_CONF}.${__TS__}.bck &> /dev/null && rm -f ${KAFKA_CONF}.${__TS__}.bck || true
+diff -q ${KAFKA_CONSUMER_CONF} ${KAFKA_CONSUMER_CONF}.${__TS__}.bck &> /dev/null && rm -f ${KAFKA_CONSUMER_CONF}.${__TS__}.bck || true
+diff -q ${KAFKA_ENV} ${KAFKA_ENV}.${__TS__}.bck &> /dev/null && rm -f ${KAFKA_ENV}.${__TS__}.bck || true
+
+# All done
+echo "  [INFO] Configuration(s) successfully updated"
+exit 0

@@ -1,0 +1,165 @@
+#!/bin/bash
+#
+# Shell script to configure some options of Zookeeper.
+#
+# Copyright 2016-2017, Frederico Martins
+#   Author: Frederico Martins <http://github.com/fscm>
+#
+# SPDX-License-Identifier: MIT
+#
+# This progam is free software. You can use it and/or modify it under the
+# terms of the MIT License.
+#
+
+set -e
+
+BASEDIR=$(dirname $0)
+BASENAME=$(basename $0)
+__TS__=$(date +%Y%m%d%H%M%S)
+
+# Configuration files
+ZOOKEEPER_CONF="/srv/zookeeper/conf/zoo.cfg"
+ZOOKEEPER_JAVA_ENV="/srv/zookeeper/conf/java.env"
+ZOOKEEPER_MYID="/data/zookeeper/myid"
+
+# Variables
+ZOOKEEPER_DISABLE=0
+ZOOKEEPER_ENABLE=0
+ZOOKEEPER_START=0
+ZOOKEEPER_WAIT=0
+
+ZOOKEEPER_HEAP_MAXSIZE=
+ZOOKEEPER_ID=
+
+__PORT_RANGE__="2888:3888"
+__TMP_NODES__=()
+
+# Usage
+function show_usage() {
+  echo "Usage: ${BASENAME} [options]"
+  echo "  options:"
+  echo "    -D               Disables the Zookeeper service from start at boot time."
+  echo "    -E               Enables the Zookeeper service to start at boot time."
+  echo "    -i <ID>          Sets the Zookeeper ID (default value is '1')."
+  echo "    -m <MEMORY>      Sets Zookeeper maximum heap size. Values should be provided"
+  echo "                     following the same Java heap nomenclature."
+  echo "    -n <ID:ADDRESS>  The ID and Address of a cluster node (e.g.: '1:127.0.0.1')."
+  echo "                     Should be used to set all nodes."
+  echo "    -S               Starts the Zookeeper service after performing the required"
+  echo "                     configurations (if any given)."
+  echo "    -W <SECONDS>     Waits the specified amount of seconds before starting the"
+  echo "                     Zookeeper service (default value is '0')."
+}
+
+# Options parsing
+while getopts ":DEi:m:n:SW:" opt; do
+  case $opt in
+    D)
+      ZOOKEEPER_DISABLE=1
+      ;;
+    E)
+      ZOOKEEPER_ENABLE=1
+      ;;
+    i)
+      ZOOKEEPER_ID=${OPTARG}
+      ;;
+    m)
+      ZOOKEEPER_HEAP_MAXSIZE=${OPTARG}
+      ;;
+    n)
+      __TMP_NODES__+=("${OPTARG}")
+      ;;
+    S)
+      ZOOKEEPER_START=1
+      ;;
+    W)
+      ZOOKEEPER_WAIT=${OPTARG}
+      ;;
+    \?)
+      echo >&2 "  [ERROR] Invalid option: -${OPTARG}"
+      exit 1
+      ;;
+    :)
+      echo >&2 "  [ERROR] Option -${OPTARG} requires an argument"
+      exit 2
+      ;;
+  esac
+done
+
+# Check arguments
+if [[ $# -eq 0 ]]; then
+  show_usage
+  exit 3
+fi
+
+# Check permissions
+if [[ $EUID -ne 0 ]]; then
+  echo >&2 "  [ERROR] This script requires privileged access to system files"
+  exit 4
+fi
+
+# Check requirements
+if [[ "${ZOOKEEPER_ENABLE}" -gt 0 ]] && [[ "${ZOOKEEPER_DISABLE}" -gt 0 ]]; then
+  echo >&2 "  [ERROR] Enable (-E) and Disable (-D) options can not be used together."
+  exit 5
+fi
+if [[ "${#__TMP_NODES__[@]}" -gt 0 ]] && [[ "x${ZOOKEEPER_ID}" = "x" ]]; then
+  echo >&2 "  [ERROR] Node ID (-i) is required when defining cluster nodes (-n)."
+  exit 6
+fi
+
+# Backup configuration files
+if [[ -f ${ZOOKEEPER_CONF} ]]; then
+  cp ${ZOOKEEPER_CONF} ${ZOOKEEPER_CONF}.${__TS__}.bck
+fi
+if [[ -f ${ZOOKEEPER_JAVA_ENV} ]]; then
+  cp ${ZOOKEEPER_JAVA_ENV} ${ZOOKEEPER_JAVA_ENV}.${__TS__}.bck
+fi
+if [[ -f ${ZOOKEEPER_MYID} ]]; then
+  cp ${ZOOKEEPER_MYID} ${ZOOKEEPER_MYID}.${__TS__}.bck
+fi
+
+# Configure node id
+if ! [[ "x${ZOOKEEPER_ID}" = "x" ]]; then
+  echo ${ZOOKEEPER_ID} > ${ZOOKEEPER_MYID}
+fi
+
+# Configure memory settings
+if ! [[ "x${ZOOKEEPER_HEAP_MAXSIZE}" = "x" ]]; then
+  sed -i -r -e '/-Xmx/d' ${ZOOKEEPER_JAVA_ENV}
+  echo "JVMFLAGS=\"\$JVMFLAGS -Xmx${ZOOKEEPER_HEAP_MAXSIZE}\"" >> ${ZOOKEEPER_JAVA_ENV}
+fi
+
+# Configure cluster nodes
+if [[ ${#__TMP_NODES__[@]} -gt 0 ]]; then
+  for node in ${__TMP_NODES__[@]//,/ }; do
+    if [[ "${node}" =~ ^([0-9]+):([0-9a-zA-Z\.\-]+)$ ]]; then
+      NODE_ID="server.${BASH_REMATCH[1]}"
+      NODE_INFO="${BASH_REMATCH[2]}:${__PORT_RANGE__}"
+      sed -i -r -e "/^${NODE_ID}=/{h;s/=.*/=${NODE_INFO}/};\${x;/^\$/{s//${NODE_ID}=${NODE_INFO}/;H};x}" ${ZOOKEEPER_CONF}
+    else
+      echo "  [WARN] Invalid node address (${node})."
+    fi
+  done
+fi
+
+# Enable the service
+[[ "${ZOOKEEPER_ENABLE}" -gt 0 ]] && systemctl enable zookeeper.service
+
+# Disable the service
+[[ "${ZOOKEEPER_DISABLE}" -gt 0 ]] && systemctl disable zookeeper.service
+
+# Start the service
+if [[ "${ZOOKEEPER_START}" -gt 0 ]]; then
+  echo "  [INFO] Zookeeper will start in ${ZOOKEEPER_WAIT} second(s)..."
+  nohup sh -c "sleep ${ZOOKEEPER_WAIT} ; systemctl start zookeeper.service" &> /dev/null &
+fi
+
+# Clean up unneeded backups
+diff -q ${ZOOKEEPER_CONF} ${ZOOKEEPER_CONF}.${__TS__}.bck &> /dev/null && rm -f ${ZOOKEEPER_CONF}.${__TS__}.bck || true
+diff -q ${ZOOKEEPER_JAVA_ENV} ${ZOOKEEPER_JAVA_ENV}.${__TS__}.bck &> /dev/null && rm -f ${ZOOKEEPER_JAVA_ENV}.${__TS__}.bck || true
+diff -q ${ZOOKEEPER_MYID} ${ZOOKEEPER_MYID}.${__TS__}.bck &> /dev/null && rm -f ${ZOOKEEPER_MYID}.${__TS__}.bck || true
+
+# All done
+echo "  [INFO] Configuration(s) successfully updated"
+exit 0

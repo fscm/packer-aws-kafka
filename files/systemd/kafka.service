@@ -1,0 +1,34 @@
+#
+# Systemd script to manage a Kafka broker.
+#
+# Copyright 2016-2017, Frederico Martins
+#   Author: Frederico Martins <http://github.com/fscm>
+#
+# SPDX-License-Identifier: MIT
+#
+
+[Unit]
+Description=Kafka
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User=kafka
+Group=kafka
+WorkingDirectory=/srv/kafka
+ExecStart=/srv/kafka/bin/kafka-server-start.sh -daemon /srv/kafka/config/server.properties
+ExecStop=/srv/kafka/bin/kafka-server-stop.sh
+SyslogIdentifier=kafka
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=infinity
+LimitMEMLOCK=infinity
+LimitNPROC=infinity
+LimitAS=infinity
+SuccessExitStatus=143
+Restart=always
+RestartSec=20
+
+[Install]
+WantedBy=multi-user.target
