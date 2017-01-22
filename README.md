@@ -33,7 +33,7 @@ AWS Command Line Interface installation instructions can be found [here](http://
 
 #### Debian AMI's
 
-A list of all the Debian AMI id's can be found at the debian official page:
+A list of all the Debian AMI id's can be found at the Debian official page:
 [Debian oficial Amazon EC2 Images](https://wiki.debian.org/Cloud/AmazonEC2Image/)
 
 ### Usage
@@ -203,16 +203,16 @@ The following ports will have to be configured on Security Groups.
 ## Versioning
 
 This project uses [SemVer](http://semver.org/) for versioning. For the versions
-available, see the [tags on this repository](https://github.com/fscm/packer-templates/tags).
+available, see the [tags on this repository](https://github.com/fscm/packer-aws-kafka/tags).
 
 ## Authors
 
 * **Frederico Martins** - [fscm](https://github.com/fscm)
 
-See also the list of [contributors](https://github.com/fscm/packer-templates/contributors)
+See also the list of [contributors](https://github.com/fscm/packer-aws-kafka/contributors)
 who participated in this project.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/fscm/packer-templates/LICENSE)
+This project is licensed under the MIT License - see the [LICENSE](LICENSE)
 file for details
