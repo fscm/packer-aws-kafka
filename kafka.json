@@ -1,4 +1,7 @@
 {
+  "_copyright": "2016-2017, Frederico Martins",
+  "_author":    "Frederico Martins <http://github.com/fscm>",
+  "_license":   "SPDX-License-Identifier: MIT",
   "variables": {
     "aws_access_key":       "{{env `aws_access_key`}}",
     "aws_ami_name":         "kafka",
