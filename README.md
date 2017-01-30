@@ -135,8 +135,8 @@ image. The script is called **zookeeper_config**.
 
 #### Zookeeper Configuration Script
 
-The script can and should be used to set some of the Kafka options as well as
-setting the Kafka service to start at boot.
+The script can and should be used to set some of the Zookeeper options as well
+as setting the Zookeeper service to start at boot.
 
 ```
 Usage: zookeeper_config [options]
@@ -182,7 +182,8 @@ More options can be used on the instance configuration, see the
 
 ## Services
 
-This AMI will have the SSH service running as well as the Kafka services.
+This AMI will have the SSH service running as well as the Kafka services. The
+Zookeeper service may also be running on this AMI.
 The following ports will have to be configured on Security Groups.
 
 | Service      | Port      | Protocol |
