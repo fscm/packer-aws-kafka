@@ -17,6 +17,7 @@
     "kafka_scala_version":  "2.11",
     "kafka_uid":            "2008",
     "kafka_version":        "{{env `kafka_version`}}",
+    "os_short_arch":        "x64",
     "system_locale":        "en_US",
     "zookeeper_uid":        "2006",
     "zookeeper_version":    "3.4.9"
