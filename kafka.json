@@ -66,6 +66,9 @@
     {
       "type":           "shell",
       "inline_shebang": "/bin/bash -e",
+      "environment_vars": [
+        "DEBIAN_FRONTEND=noninteractive"
+      ],
       "inline": [
         "unset HISTFILE",
         "history -cw",
@@ -74,7 +77,7 @@
         "echo === System Packages ===",
         "echo 'deb http://ftp.debian.org/debian jessie-backports main contrib non-free' | sudo tee /etc/apt/sources.list.d/backports.list > /dev/null",
         "sudo apt-get -qq update",
-        "sudo DEBIAN_FRONTEND=noninteractive apt-get -y -qq install --no-install-recommends apt-transport-https apt-show-versions bash-completion logrotate ntp ntpdate htop vim wget curl dbus bmon nmon parted wget curl sudo rsyslog ethtool unzip zip telnet tcpdump strace tar libyaml-0-2 lsb-base lsb-release xfsprogs sysfsutils",
+        "sudo apt-get -y -qq install --no-install-recommends apt-transport-https apt-show-versions bash-completion logrotate ntp ntpdate htop vim wget curl dbus bmon nmon parted wget curl sudo rsyslog ethtool unzip zip telnet tcpdump strace tar libyaml-0-2 lsb-base lsb-release xfsprogs sysfsutils",
         "sudo apt-get -y -qq --purge autoremove",
         "sudo apt-get autoclean",
         "sudo apt-get clean",
